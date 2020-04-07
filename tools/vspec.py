@@ -13,6 +13,7 @@ import yaml
 import json
 import os
 import uuid
+import json
 
 class VSpecError(Exception):
     def __init__(self, *args, **kwargs):
@@ -29,7 +30,7 @@ class VSpecError(Exception):
 #
 class SignalUUIDManager:
     NAMESPACE = "vehicle_signal_specification"
-    
+
     def __init__(self):
         self.signal_uuid_db_set = {}
         self.namespace_uuid = uuid.uuid5(uuid.NAMESPACE_OID, self.NAMESPACE)
@@ -205,14 +206,15 @@ def assign_signal_uuids(flat_model):
 
 def load(file_name, include_paths):
     flat_model = load_flat_model(file_name, "", include_paths)
-    absolute_path_flat_model = create_absolute_paths(flat_model)
-    absolute_path_flat_model_with_id = assign_signal_uuids(absolute_path_flat_model)
-    deep_model = create_nested_model(absolute_path_flat_model_with_id, file_name)
-    cleanup_deep_model(deep_model)
-    return deep_model["children"]
+    # absolute_path_flat_model = create_absolute_paths(flat_model)
+    # absolute_path_flat_model_with_id = assign_signal_uuids(absolute_path_flat_model)
+    # deep_model = create_nested_model(absolute_path_flat_model_with_id, file_name)
+    # cleanup_deep_model(deep_model)
+    return flat_model
+#    return deep_model["children"]
 
 
-def load_flat_model(file_name, prefix, include_paths):
+def load_flat_model(file_name, parent, include_paths):
     # Hooks into YAML parser to add line numbers
     # and file name into each elemeent
     def yaml_compose_node(parent, index):
@@ -227,6 +229,7 @@ def load_flat_model(file_name, prefix, include_paths):
 
         node.__line__ = line + 1
         node.__file_name__ = file_name
+        print(f"Node: {node}")
         return node
 
     def yaml_construct_mapping(node, deep=False):
@@ -246,7 +249,6 @@ def load_flat_model(file_name, prefix, include_paths):
         mapping['$file_name$'] = node.__file_name__
         return mapping
 
-
     directory, text = search_and_read(file_name, include_paths)
     text = yamilify_includes(text)
 
@@ -254,27 +256,34 @@ def load_flat_model(file_name, prefix, include_paths):
     # added python objects to the parsed tree.
     loader = yaml.Loader(text)
     loader.compose_node = yaml_compose_node
-
     loader.construct_mapping = yaml_construct_mapping
     raw_yaml = loader.get_data()
 
     # Import signal IDs from the given database
+    print(f"RAW YAML {json.dumps(raw_yaml, indent=2)}")
 
+    if not isinstance(raw_yaml, dict):
+        print(f"Loaded YAML file {file_name} not a dictionary.")
+        sys.exit(255)
+
+    if not len(raw_yaml) != 1:
+        print(f"Loaded YAML file {file_name} has more than one root elements.")
+        sys.exit(255)
 
     # Check for file with no objects.
     if not raw_yaml:
-        return []
+        return {}
 
     # Sanity check of loaded code
-    check_yaml_usage(raw_yaml, file_name)
+#    check_yaml_usage(raw_yaml, file_name)
 
     # Recursively expand all include files.
-    expanded_includes = expand_includes(raw_yaml, prefix, list(set(include_paths + [directory])))
+    expand_includes(raw_yaml, list(set(include_paths + [directory])))
+    print(f"EXPANDED INCLUDE {json.dumps(raw_yaml, indent=2)}")
 
-    # Add type: branch when type is missing.
-    flat_model = cleanup_flat_entries(expanded_includes)
+    # flat_model = cleanup_flat_entries(expanded_includes)
 
-    return flat_model
+    return raw_yaml
 
 
 
@@ -356,40 +365,24 @@ def check_yaml_usage(flat_model, file_name):
 
 # Expand yaml include elements (inserted by yamilify_include())
 #
-def expand_includes(flat_model, prefix, include_paths):
-    # Build up a new spec model based on the old one, but
-    # with expanded include directives.
-
-    new_flat_model = []
-
+def expand_includes(root, include_paths):
     # Traverse the flat list of the parsed specification
-    for elem in flat_model:
+    if not isinstance(root, dict):
+        return None
+    for (key, elem) in root.items():
         # Is this an include element?
-        if "$include$" in elem:
-            include_elem = elem["$include$"]
-            include_prefix = include_elem.get("prefix", "")
-            # Append include prefix to our current prefix.
-            # Make sure we do not start new prefix with a "."
-            if prefix != "":
-                if include_prefix != "":
-                    include_prefix = "{}.{}".format(prefix, include_prefix)
-                else:
-                    include_prefix = prefix
+        print(f"key: {key} -> {elem}")
+        if key == '$include$':
+            include_elem = elem['$include$']
 
-            # Recursively load included file
-            inc_elem = load_flat_model(include_elem["file"], include_prefix, include_paths)
+            # Recursively load included file and hook it under root element
+            root[next(iter(root))] = load_flat_model(include_elem["file"], include_paths)
 
-            # Add the loaded elements at the end of the new spec model
-            new_flat_model.extend(inc_elem)
         else:
-            # Add a prefix to the element
-            elem["$prefix$"] = prefix
-            # Add the existing elements at the end of the new spec model
-            new_flat_model.append(elem)
-
-    return new_flat_model
-
-
+            # Check if child dictionary needs include expanstion
+            new_elem = expand_includes(root[key], include_paths)
+            if new_elem:
+                root[key] = new_elem
 
 #
 # Take the flat model created by _load() and merge all $prefix$ with its name

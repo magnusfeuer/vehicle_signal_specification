@@ -78,27 +78,23 @@ def format_data(json_data, complex=False):
     Sensor = '""'
     Actuator = '""'
 
-    if ('uuid' in json_data):
+    if 'uuid' in json_data:
         Uuid = '"' + str(json_data['uuid']) + '"'
-    if ('type' in json_data):
+    if 'type' in json_data:
         Type = '"' + json_data['type'] + '"'
-    if ('datatype' in json_data):
+    if 'datatype' in json_data:
         DataType = '"' + json_data['datatype'] + '"'
-    if ('unit' in json_data):
+    if 'unit' in json_data:
         Unit = '"' + json_data['unit'] + '"'
-    if ('min' in json_data):
+    if 'min' in json_data:
         Min = '"' + str(json_data['min']) + '"'
-    if ('max' in json_data):
+    if 'max' in json_data:
         Max = '"' + str(json_data['max']) + '"'
-    if ('description' in json_data):
+    if 'description' in json_data:
         Desc = '"' + json_data['description'] + '"'
-    if ('enum' in json_data):
+    if 'enum' in json_data:
         Enum = '"' + ' / '.join(json_data['enum']) + '"'
-    if ('sensor' in json_data):
-        Sensor = '"' + str(json_data['sensor']) + '"'
-    if ('actuator' in json_data):
-        Actuator = '"' + str(json_data['actuator']) + '"'
-    return f"{Id},{Type},{DataType},{Complex},{Unit},{Min},{Max},{Desc},{Enum},{Sensor},{Actuator}"
+    return f"{Id},{Type},{DataType},{Complex},{Unit},{Min},{Max},{Desc},{Enum}"
 
 
 def json2csv(json_data, file_out, parent_signal, instances=[]):
@@ -109,15 +105,17 @@ def json2csv(json_data, file_out, parent_signal, instances=[]):
             signal = k
 
         local_instances = instances
-        if ('instances' in json_data[k].keys()):
-            local_instances = instances + [(json_data[k]['instances'])]
+        if 'instances' in json_data:
+            local_instances = local_instances + (json_data[k]['instances'])
+            del json_data[instances]
 
         # if it's a branch, create an entry and continue
         # with its children
-        if (json_data[k]['type'] == 'branch'):
+        if isinstance(json_data[k], dict):
+            print(f"Formatting JSON data {json.dumps(json_data[k], indent=2)}")
             file_out.write(signal + ',' + format_data(json_data[k]) + '\n')
             # if postion attribute exists, keep it
-            json2csv(json_data[k]['children'], file_out, signal, local_instances)
+            json2csv(json_data[k], file_out, signal, local_instances)
 
         # if it's a leave, make an entry, check the entries for instances and
         # create an entry for every instance
@@ -125,10 +123,9 @@ def json2csv(json_data, file_out, parent_signal, instances=[]):
             complex = False
             if instances:
                 complex = True
-            file_out.write(signal + ',' + format_data(json_data[k],complex) \
+            file_out.write(signal + ',' + format_data(json_data,complex) \
                           + "," + str(instances) + '\n')
             createInstantiationEntries(local_instances, file_out, json_data[k], signal)
-
 
 
 def createInstantiationEntries(instances, file_out, json_data, prefix=''):
