@@ -246,7 +246,6 @@ def load_flat_model(file_name, prefix, include_paths):
 
         if node.value == '$include$':
             node.value = f'$include${load_flat_model.include_index}'
-            print(f"New node value {node.value}")
             load_flat_model.include_index = load_flat_model.include_index + 1
 
         # Avoid having root-level line numbers as non-dictionary entries
@@ -301,9 +300,7 @@ def load_flat_model(file_name, prefix, include_paths):
     if not raw_yaml:
         return []
 
-    print(f"BEFORE {json.dumps(raw_yaml,indent=2)}")
     raw_yaml = convert_yaml_to_list(raw_yaml)
-    print(f"AFTER {json.dumps(raw_yaml,indent=2)}")
 
 
     # Sanity check of loaded code
@@ -417,7 +414,6 @@ def expand_includes(flat_model, prefix, include_paths):
                     include_prefix = prefix
 
             # Recursively load included file
-            print(f"Loading {elem['file']}")
             inc_elem = load_flat_model(elem["file"], include_prefix, include_paths)
 
             # Add the loaded elements at the end of the new spec model
